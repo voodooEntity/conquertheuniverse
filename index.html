@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NGRS — 3D RTS Prototype</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0b0f14; color: #d7e1ec; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    #app { position: fixed; inset: 0; display: grid; grid-template-rows: 1fr auto; }
+    canvas { display: block; outline: none; }
+    .hud { padding: 8px 12px; background: rgba(10,14,18,0.6); border-top: 1px solid rgba(255,255,255,0.06); font-size: 12px; }
+    .hud code { background: rgba(255,255,255,0.06); padding: 1px 4px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="rts-canvas" tabindex="1"></canvas>
+    <div class="hud">
+      LDrag = Select | RClick = Move | RDrag = Pan | Ctrl+RDrag = Rotate | MDrag = Orbit | Wheel = Elevate Cursor/Plane (Y)
+      | <strong>L</strong> = Toggle Mouse Lock (edge‑free cursor)
+      | Cursor: <span id="cursor-readout">(0.0, 0.0, 0.0)</span>
+    </div>
+  </div>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+      }
+    }
+  </script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
