@@ -13,6 +13,16 @@ export class InputSystem {
         this.unitManager = unitManager;
         this.gridSlice = opts.gridSlice ?? null;
 
+        // --- CONFIGURATION ---
+        // 1. Drag Speed (Float) - Applies to Locked (manual) and Unlocked (OrbitControls) panning.
+        this.panSpeedMultiplier = 4.0;
+
+        // 2. Zoom Speed (Float) - How fast Shift+Scroll zooms in/out
+        this.zoomSpeed = 0.1;
+
+        // Apply multiplier to native controls immediately
+        this.controls.panSpeed = this.panSpeedMultiplier;
+
         // Cursor state
         this.cursor = new THREE.Vector3(0, 0, 0);
         this.cursorHeight = 0;
@@ -133,7 +143,7 @@ export class InputSystem {
 
         // HUD readout
         this._cursorReadout = document.getElementById('cursor-readout');
-        console.log('[InputSystem] Ready.');
+        console.log(`[InputSystem] Ready. Pan:${this.panSpeedMultiplier}, Zoom:${this.zoomSpeed}`);
     }
 
     dispose() {
@@ -237,7 +247,6 @@ export class InputSystem {
 
         if (!this._isEdgeScrolling) {
             this._isEdgeScrolling = true;
-            // console.log(`[InputSystem] Edge scroll started: x=${moveX}, z=${moveZ}`);
         }
 
         const forward = new THREE.Vector3();
@@ -265,11 +274,41 @@ export class InputSystem {
 
     onWheel(e) {
         e.preventDefault();
-        const delta = e.deltaY;
+        const delta = e.deltaY; // deltaY is positive (Down) or negative (Up)
+
+        // --- NEW: Zoom Logic (Shift + Wheel) ---
+        if (e.shiftKey) {
+            // 1. Get vector from Target (pivot) to Camera
+            const target = this.controls.target;
+            const offset = this.camera.position.clone().sub(target);
+
+            // 2. Calculate current distance
+            let dist = offset.length();
+
+            // 3. Apply Zoom
+            // Wheel Down (+delta) -> Zoom Out (Increase distance)
+            // Wheel Up (-delta) -> Zoom In (Decrease distance)
+            const change = delta * this.zoomSpeed;
+            dist += change;
+
+            // 4. Clamp distance (Safety to avoid passing through floor or infinite zoom)
+            dist = Math.max(5, Math.min(500, dist));
+
+            // 5. Apply new length and update camera
+            offset.setLength(dist);
+            this.camera.position.copy(target).add(offset);
+
+            this.controls.update();
+            console.log(`[InputSystem] Shift+Wheel Zoom: Dist=${dist.toFixed(1)}`);
+            return; // Skip height adjustment
+        }
+
+        // --- EXISTING: Height Logic (No Shift) ---
         const dH = -delta * this.elevSensitivity;
         this.cursorHeight += dH;
         console.log(`[InputSystem] Wheel: delta=${delta}, newHeight=${this.cursorHeight.toFixed(2)}`);
 
+        // Move camera in lockstep to preserve relative distance to the virtual cursor
         if (this.camera) this.camera.position.y += dH;
         if (this.controls && this.controls.target) this.controls.target.y += dH;
         if (this._heightLock !== null) this._heightLock += dH;
@@ -320,7 +359,7 @@ export class InputSystem {
             this._lastClientX = e.clientX;
             this._lastClientY = e.clientY;
             this._rmbDown = true;
-            this._rmbDragged = false; // Reset drag state
+            this._rmbDragged = false;
         }
     }
 
@@ -348,9 +387,8 @@ export class InputSystem {
             return;
         }
 
-        // End Locked Interaction (Pan or Click)
+        // End Locked Interaction
         if (e.button === 2 && this.pointerLocked) {
-            // Fix: Check for click here because onMouseUp won't see _rmbDown after we clear it
             if (!this._rmbDragged && !this._suppressRmbClick) {
                 const target = new THREE.Vector3(this.cursor.x, this.cursorHeight, this.cursor.z);
                 console.log(`[InputSystem] Locked Click -> Move to: ${target.x.toFixed(1)}, ${target.z.toFixed(1)}`);
@@ -361,7 +399,7 @@ export class InputSystem {
 
             this.cameraInteracting = false;
             this._heightLock = null;
-            this._rmbDown = false; // Now safely clear it
+            this._rmbDown = false;
             this._rmbDragged = false;
             this._suppressRmbClick = false;
         }
@@ -407,15 +445,17 @@ export class InputSystem {
             return;
         }
 
-        // Locked Pan (Manual implementation since OrbitControls might be bypassed)
+        // Locked Pan
         if (this.pointerLocked && this._rmbDown) {
-            // Fix: Detect drag to distinguish from click
             if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
                 this._rmbDragged = true;
             }
 
             const dist = this.camera.position.distanceTo(this.controls.target || new THREE.Vector3());
-            const panScale = Math.max(0.0015, Math.min(0.015, dist * 0.0045));
+
+            const baseScale = Math.max(0.0015, Math.min(0.015, dist * 0.0045));
+            const panScale = baseScale * this.panSpeedMultiplier;
+
             const camDir = new THREE.Vector3();
             this.camera.getWorldDirection(camDir);
             const up = new THREE.Vector3(0,1,0);
@@ -458,7 +498,6 @@ export class InputSystem {
             this.gizmos.showSelectionSphere(this.selectCenter, 0.0001);
             console.log('[InputSystem] Selection Start');
         } else if (e.button === 2) {
-            // Unlocked RMB handling
             this._rmbDown = true;
             this._rmbStartX = e.clientX;
             this._rmbStartY = e.clientY;
@@ -475,7 +514,6 @@ export class InputSystem {
             this._mouseY = e.clientY;
         }
 
-        // Unlocked drag detection
         if (this._rmbDown && !this._rmbDragged && !this.pointerLocked) {
             const dx = e.clientX - this._rmbStartX;
             const dy = e.clientY - this._rmbStartY;
@@ -526,9 +564,7 @@ export class InputSystem {
             }
         }
 
-        // UNLOCKED Mode Click handling
         if (e.button === 2 && this._rmbDown) {
-            // If we are here, it means pointerLocked was FALSE, so onPointerUp didn't consume this.
             if (!this._rmbDragged && !e.ctrlKey && !this._suppressRmbClick) {
                 const target = new THREE.Vector3(this.cursor.x, this.cursorHeight, this.cursor.z);
                 console.log(`[InputSystem] Unlocked Click -> Move to: ${target.x.toFixed(1)}, ${target.z.toFixed(1)}`);
